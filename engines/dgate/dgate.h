@@ -43,6 +43,7 @@ enum {
 
 class DGateEngine : public ::Engine {
 protected:
+	void mainLoop();
 
 public:
 	DGateEngine(OSystem *syst);
@@ -56,6 +57,9 @@ private:
 
 	// We need random numbers
 	Common::RandomSource *_rnd;
+
+	int16 _mouseX, _mouseY;
+	uint16 _buttonState;
 };
 
 // Example console class
