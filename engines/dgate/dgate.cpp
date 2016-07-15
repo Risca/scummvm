@@ -22,7 +22,12 @@
 
 #include "common/debug.h"
 #include "common/debug-channels.h"
+#include "common/events.h"
 #include "common/error.h"
+#include "graphics/palette.h"
+#include "graphics/paletteman.h"
+#include "graphics/surface.h"
+#include "video/flic_decoder.h"
 #include "engines/util.h"
 
 #include "dgate/dgate.h"
@@ -81,17 +86,95 @@ Common::Error DGateEngine::run()
  
 	// Additional setup.
 	debug("DGateEngine::init");
+
+	// Play intro sequence
+	Video::FlicDecoder *flicPlayer = new Video::FlicDecoder;
+	if (!flicPlayer->loadFile("dgate000.q")) {
+		warning("Failed to open dgate000.q");
+	}
+	else {
+		flicPlayer->start();
+		while (!flicPlayer->endOfVideo()) {
+			if (flicPlayer->hasDirtyPalette()) {
+				_system->getPaletteManager()->setPalette(flicPlayer->getPalette(), 0, 256);
+			}
+
+			const Graphics::Surface *frame = flicPlayer->decodeNextFrame();
+			if (frame) {
+				_system->copyRectToScreen(frame->getPixels(), frame->pitch, 0, 0, frame->w, frame->h);
+				_system->updateScreen();
+			}
+			_system->delayMillis(flicPlayer->getTimeToNextFrame());
+		}
+	}
+	delete flicPlayer;
  
-	// Your main event loop should be (invoked from) here.
-	debug("DGateEngine::go: Hello, World!");
- 
-	// This test will show up if -d1 and --debugflags=example are specified on the commandline
-	debugC(1, kDGateDebugExample, "Example debug call");
- 
-	// This test will show up if --debugflags=example or --debugflags=example2 or both of them and -d3 are specified on the commandline
-	debugC(3, kDGateDebugExample | kDGateDebugExample2, "Example debug call two");
+	mainLoop();
  
 	return Common::kNoError;
+}
+
+void DGateEngine::mainLoop() {
+	debug("DGateEngine::mainLoop");
+	uint32 nextFrameTime = 0;
+	while (!shouldQuit()) {
+		Common::Event event;
+		Common::EventManager *eventMan = _system->getEventManager();
+		while (eventMan->pollEvent(event)) {
+			switch (event.type) {
+			case Common::EVENT_KEYDOWN:
+				if (event.kbd.hasFlags(Common::KBD_CTRL) && event.kbd.keycode == Common::KEYCODE_d) {
+					// Open debugger console
+					_console->attach();
+					continue;
+				}
+//				_gameModule->handleKeyDown(event.kbd.keycode);
+//				_gameModule->handleAsciiKey(event.kbd.ascii);
+				break;
+			case Common::EVENT_KEYUP:
+				break;
+			case Common::EVENT_MOUSEMOVE:
+				_mouseX = event.mouse.x;
+				_mouseY = event.mouse.y;
+//				_gameModule->handleMouseMove(event.mouse.x, event.mouse.y);
+				break;
+			case Common::EVENT_LBUTTONDOWN:
+			case Common::EVENT_RBUTTONDOWN:
+//				_gameModule->handleMouseDown(event.mouse.x, event.mouse.y);
+				break;
+			case Common::EVENT_LBUTTONUP:
+			case Common::EVENT_RBUTTONUP:
+//				_gameModule->handleMouseUp(event.mouse.x, event.mouse.y);
+				break;
+			case Common::EVENT_WHEELUP:
+//				_gameModule->handleWheelUp();
+				break;
+			case Common::EVENT_WHEELDOWN:
+//				_gameModule->handleWheelDown();
+				break;
+			case Common::EVENT_QUIT:
+				_system->quit();
+				break;
+			default:
+				break;
+			}
+		}
+		if (_system->getMillis() >= nextFrameTime) {
+//			_gameModule->checkRequests();
+//			_gameModule->handleUpdate();
+//			_gameModule->draw();
+			_console->onFrame();
+//			_screen->update();
+//			if (_updateSound)
+//				_soundMan->update();
+			nextFrameTime += 1000/24; // 24 fps
+		};
+
+//		_audioResourceMan->updateMusic();
+
+		_system->updateScreen();
+		_system->delayMillis(10);
+	}
 }
 
 } // End of namespace DGate
