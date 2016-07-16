@@ -105,8 +105,9 @@ protected:
 
 		void copyFrame(uint8 *data);
 		void decodeByteRun(uint8 *data);
+		void decodeDeltaFLI(uint8 *data);
 		void decodeDeltaFLC(uint8 *data);
-		void unpackPalette(uint8 *mem);
+		void unpackPalette(uint8 *mem, bool reducedPalette = false);
 	};
 };
 

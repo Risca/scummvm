@@ -43,7 +43,7 @@ bool FlicDecoder::loadStream(Common::SeekableReadStream *stream) {
 	uint16 frameType = stream->readUint16LE();
 
 	// Check FLC magic number
-	if (frameType != 0xAF12) {
+	if (frameType != 0xAF11 && frameType != 0xAF12) {
 		warning("FlicDecoder::loadStream(): attempted to load non-FLC data (type = 0x%04X)", frameType);
 		return false;
 	}
@@ -117,8 +117,11 @@ void FlicDecoder::FlicVideoTrack::readHeader() {
 	_offsetFrame1 = _fileStream->readUint32LE();
 	_offsetFrame2 = _fileStream->readUint32LE();
 
-	if (_offsetFrame1 == 0)
+	if (_offsetFrame1 == 0) {
+		/* FLI format */
 		_offsetFrame1 = 0x80; //length of FLIC header
+		_offsetFrame2 = 0x80; // No ring frame
+	}
 
 	// Seek to the first frame
 	_fileStream->seek(_offsetFrame1);
@@ -154,6 +157,8 @@ Graphics::PixelFormat FlicDecoder::FlicVideoTrack::getPixelFormat() const {
 
 #define FLI_SETPAL            4
 #define FLI_SS2               7
+#define FLI_COLOR             11
+#define FLI_LC                12
 #define FLI_BLACK             13
 #define FLI_BRUN              15
 #define FLI_COPY              16
@@ -178,7 +183,7 @@ const Graphics::Surface *FlicDecoder::FlicVideoTrack::decodeNextFrame() {
 	default:
 		error("FlicDecoder::decodeFrame(): unknown main chunk type (type = 0x%02X)", frameType);
 		break;
-	 }
+	}
 
 	_curFrame++;
 	_nextFrameStartTime += _frameDelay;
@@ -230,6 +235,13 @@ void FlicDecoder::FlicVideoTrack::handleFrame() {
 			break;
 		case FLI_SS2:
 			decodeDeltaFLC(data);
+			break;
+		case FLI_COLOR:
+			unpackPalette(data, true);
+			_dirtyPalette = true;
+			break;
+		case FLI_LC:
+			decodeDeltaFLI(data);
 			break;
 		case FLI_BLACK:
 			_surface->fillRect(Common::Rect(0, 0, getWidth(), getHeight()), 0);
@@ -296,6 +308,39 @@ void FlicDecoder::FlicVideoTrack::decodeByteRun(uint8 *data) {
 	_dirtyRects.push_back(Common::Rect(0, 0, getWidth(), getHeight()));
 }
 
+void FlicDecoder::FlicVideoTrack::decodeDeltaFLI(uint8 *data) {
+	uint16 currentLine = READ_LE_UINT16(data); data += 2;
+	uint16 linesInChunk = READ_LE_UINT16(data); data += 2;
+
+	for (uint16 line = 0; line < linesInChunk; ++line) {
+		uint8 packetCount = *data++;
+		uint16 column = 0;
+
+		for (uint8 i = 0; i < packetCount; ++i) {
+			uint8 columnSkip = *data++;
+			int rleCount = (int8)*data++;
+			column += columnSkip;
+
+			if (rleCount > 0) {
+				memcpy((byte *)_surface->getBasePtr(column, currentLine), data, rleCount);
+				data += rleCount;
+				column += rleCount;
+				_dirtyRects.push_back(Common::Rect(column, currentLine, column + rleCount, currentLine + 1));
+			} else if (rleCount < 0) {
+				rleCount = -rleCount;
+				uint8 dataByte = *data++;
+				memset((byte *)_surface->getBasePtr(column, currentLine), dataByte, rleCount);
+				column += rleCount;
+				_dirtyRects.push_back(Common::Rect(column, currentLine, column + rleCount, currentLine + 1));
+			}
+			else {
+				// no data, only skipping 255 bytes
+			}
+		}
+		currentLine++;
+	}
+}
+
 #define OP_PACKETCOUNT   0
 #define OP_UNDEFINED     1
 #define OP_LASTPIXEL     2
@@ -355,7 +400,7 @@ void FlicDecoder::FlicVideoTrack::decodeDeltaFLC(uint8 *data) {
 	}
 }
 
-void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data) {
+void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data, bool reducedPalette) {
 	uint16 numPackets = READ_LE_UINT16(data); data += 2;
 
 	if (0 == READ_LE_UINT16(data)) { //special case
@@ -364,6 +409,11 @@ void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data) {
 			byte r = data[i * 3];
 			byte g = data[i * 3 + 1];
 			byte b = data[i * 3 + 2];
+			if (reducedPalette) {
+			    r = (r * 256) / 63;
+			    g = (g * 256) / 63;
+			    b = (b * 256) / 63;
+			}
 			_palette.set(i, r, g, b);
 		}
 	} else {
@@ -377,6 +427,11 @@ void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data) {
 				byte r = data[i * 3];
 				byte g = data[i * 3 + 1];
 				byte b = data[i * 3 + 2];
+				if (reducedPalette) {
+				    r = (r * 256) / 63;
+				    g = (g * 256) / 63;
+				    b = (b * 256) / 63;
+				}
 				_palette.set(palPos + i, r, g, b);
 			}
 
