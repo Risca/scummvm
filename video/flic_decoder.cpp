@@ -186,7 +186,7 @@ const Graphics::Surface *FlicDecoder::FlicVideoTrack::decodeNextFrame() {
 	}
 
 	_curFrame++;
-	_nextFrameStartTime += _frameDelay;
+	_nextFrameStartTime += _frameDelay * 1000 / 70;
 
 	if (_atRingFrame) {
 		// If we decoded the ring frame, seek to the second frame
