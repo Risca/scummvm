@@ -94,7 +94,10 @@ Common::Error DGateEngine::run()
 	}
 	else {
 		flicPlayer->start();
-		while (!flicPlayer->endOfVideo()) {
+		Common::Event event;
+		Common::EventManager *eventMan = _system->getEventManager();
+		bool skipAnimation = false;
+		while (!flicPlayer->endOfVideo() && !skipAnimation) {
 			if (flicPlayer->hasDirtyPalette()) {
 				_system->getPaletteManager()->setPalette(flicPlayer->getPalette(), 0, 256);
 			}
@@ -105,6 +108,23 @@ Common::Error DGateEngine::run()
 				_system->updateScreen();
 			}
 			_system->delayMillis(flicPlayer->getTimeToNextFrame());
+
+			while (eventMan && eventMan->pollEvent(event)) {
+				switch (event.type) {
+				case Common::EVENT_KEYDOWN:
+					if (event.kbd.keycode == Common::KEYCODE_ESCAPE) {
+						skipAnimation = true;
+					}
+					break;
+
+				case Common::EVENT_QUIT:
+					skipAnimation = true;
+					break;
+
+				default:
+					break;
+				}
+			}
 		}
 	}
 	delete flicPlayer;
